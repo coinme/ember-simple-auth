@@ -1,21 +1,22 @@
-import { describe, beforeEach, afterEach } from 'mocha';
+import { describe } from 'mocha';
 import LocalStorage from 'ember-simple-auth/session-stores/local-storage';
 import itBehavesLikeAStore from './shared/store-behavior';
+import itBehavesLikeAStorageEventHandler from './shared/storage-event-handler-behavior';
 
-describe('LocalStorageStore', () => {
-  let store;
-
-  beforeEach(() => {
-    store = LocalStorage.create();
-  });
-
-  afterEach(() => {
-    store.clear();
-  });
-
+describe('LocalStorageStore', function() {
   itBehavesLikeAStore({
     store() {
-      return store;
+      return LocalStorage.create({
+        _isFastBoot: false
+      });
+    }
+  });
+
+  itBehavesLikeAStorageEventHandler({
+    store() {
+      return LocalStorage.create({
+        _isFastBoot: false
+      });
     }
   });
 });

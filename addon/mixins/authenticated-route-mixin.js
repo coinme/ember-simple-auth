@@ -1,7 +1,36 @@
-import Ember from 'ember';
+import { inject as service } from '@ember/service';
+import Mixin from '@ember/object/mixin';
+import { assert } from '@ember/debug';
+import { computed } from '@ember/object';
+import { getOwner } from '@ember/application';
 import Configuration from './../configuration';
+import isFastBootCPM, { isFastBoot } from '../utils/is-fastboot';
 
-const { inject: { service }, Mixin, assert, computed } = Ember;
+/**
+ * If the user is unauthenticated, invoke `callback`
+ *
+ * @param {ApplicationInstance} owner The ApplicationInstance that owns the service (and possibly fastboot and cookie) service(s)
+ * @param {Transition} transition Transition for the user's original navigation
+ * @param {(...args: []any) => any} callback Callback that will be invoked if the user is unauthenticated
+ */
+function runIfUnauthenticated(owner, transition, callback) {
+  const isFb = isFastBoot(owner);
+  const sessionSvc = owner.lookup('service:session');
+  if (!sessionSvc.get('isAuthenticated')) {
+    if (isFb) {
+      const fastboot = owner.lookup('service:fastboot');
+      const cookies = owner.lookup('service:cookies');
+      cookies.write('ember_simple_auth-redirectTarget', transition.intent.url, {
+        path: '/',
+        secure: fastboot.get('request.protocol') === 'https'
+      });
+    } else {
+      sessionSvc.set('attemptedTransition', transition);
+    }
+    callback();
+    return true;
+  }
+}
 
 /**
   __This mixin is used to make routes accessible only if the session is
@@ -33,6 +62,13 @@ export default Mixin.create({
   */
   session: service('session'),
 
+  _router: computed(function() {
+    let owner = getOwner(this);
+    return owner.lookup('service:router') || owner.lookup('router:main');
+  }),
+
+  _isFastBoot: isFastBootCPM(),
+
   /**
     The route to transition to for authentication. The
     {{#crossLink "AuthenticatedRouteMixin"}}{{/crossLink}} will transition to
@@ -55,9 +91,12 @@ export default Mixin.create({
     If the current transition is aborted, this method will save it in the
     session service's
     {{#crossLink "SessionService/attemptedTransition:property"}}{{/crossLink}}
-    property so that  it can be retried after the session was authenticated
+    property so that  it can be retried after the session is authenticated
     (see
-    {{#crossLink "ApplicationRouteMixin/sessionAuthenticated:method"}}{{/crossLink}}.
+    {{#crossLink "ApplicationRouteMixin/sessionAuthenticated:method"}}{{/crossLink}}).
+    If the transition is aborted in Fastboot mode, the transition's target
+    URL will be saved in a `ember_simple_auth-redirectTarget` cookie for use by
+    the browser after authentication is complete.
 
     __If `beforeModel` is overridden in a route that uses this mixin, the route's
    implementation must call `this._super(...arguments)`__ so that the mixin's
@@ -68,14 +107,27 @@ export default Mixin.create({
     @public
   */
   beforeModel(transition) {
-    if (!this.get('session.isAuthenticated')) {
-      let authenticationRoute = this.get('authenticationRoute');
-      assert('The route configured as Configuration.authenticationRoute cannot implement the AuthenticatedRouteMixin mixin as that leads to an infinite transitioning loop!', this.get('routeName') !== authenticationRoute);
-
-      this.set('session.attemptedTransition', transition);
-      return this.transitionTo(authenticationRoute);
-    } else {
+    const didRedirect = runIfUnauthenticated(getOwner(this), transition, () => {
+      this.triggerAuthentication();
+    });
+    if (!didRedirect) {
       return this._super(...arguments);
     }
-  }
+  },
+
+  /**
+    Triggers authentication; by default this method transitions to the
+    `authenticationRoute`. In case the application uses an authentication
+    mechanism that does not use an authentication route, this method can be
+    overridden.
+
+    @method triggerAuthentication
+    @protected
+  */
+  triggerAuthentication() {
+    let authenticationRoute = this.get('authenticationRoute');
+    assert('The route configured as Configuration.authenticationRoute cannot implement the AuthenticatedRouteMixin mixin as that leads to an infinite transitioning loop!', this.get('routeName') !== authenticationRoute);
+
+    this.get('_router').transitionTo(authenticationRoute);
+  },
 });

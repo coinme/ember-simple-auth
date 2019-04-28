@@ -1,15 +1,19 @@
-/* jshint node: true */
+'use strict';
 
 module.exports = function(environment) {
-  var ENV = {
+  let ENV = {
     modulePrefix: 'dummy',
-    environment: environment,
+    environment,
     rootURL: '/',
     locationType: 'auto',
     EmberENV: {
       FEATURES: {
         // Here you can enable experimental features on an ember canary build
         // e.g. 'with-controller': true
+      },
+      EXTEND_PROTOTYPES: {
+        // Prevent Ember Data from overriding Date.parse.
+        Date: false
       }
     },
 
@@ -20,19 +24,30 @@ module.exports = function(environment) {
 
     contentSecurityPolicy: {
       'style-src': "'self' 'unsafe-inline'"
-    }
-  };
+    },
 
-  ENV.browserify = {
-    tests: true
-  };
+    browserify: {
+      tests: true
+    },
 
-  ENV.torii = {
-    providers: {
-      'facebook-oauth2': {
-        apiKey: '631252926924840'
+    torii: {
+      allowUnsafeRedirects: true,
+      providers: {
+        'facebook-oauth2': {
+          apiKey: '631252926924840'
+        }
       }
-    }
+    },
+
+    apiHost: 'http://localhost:4200',
+
+    googleClientID: '694766332436-1g5bakjoo5flkfpv3t2mfsch9ghg7ggd.apps.googleusercontent.com',
+
+    fastboot: {
+      hostWhitelist: [/^localhost:\d+$/]
+    },
+
+    esaVersion: require('../../../package.json').version,
   };
 
   if (environment === 'development') {
@@ -52,10 +67,15 @@ module.exports = function(environment) {
     ENV.APP.LOG_VIEW_LOOKUPS = false;
 
     ENV.APP.rootElement = '#ember-testing';
+    ENV.APP.autoboot = false;
   }
 
   if (environment === 'production') {
-
+    // put production settings here
+    ENV.fastboot = {
+      hostWhitelist: ['ember-simple-auth.now.sh']
+    };
+    ENV.apiHost = 'https://ember-simple-auth-server.now.sh';
   }
 
   return ENV;

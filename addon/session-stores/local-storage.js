@@ -1,9 +1,10 @@
 /* global localStorage */
-import Ember from 'ember';
+import RSVP from 'rsvp';
+
+import { bind } from '@ember/runloop';
 import BaseStore from './base';
 import objectsAreEqual from '../utils/objects-are-equal';
-
-const { RSVP, $: jQuery } = Ember;
+import isFastBoot from 'ember-simple-auth/utils/is-fastboot';
 
 /**
   Session store that persists data in the browser's `localStorage`.
@@ -14,12 +15,19 @@ const { RSVP, $: jQuery } = Ember;
   the {{#crossLink "CookieStore"}}{{/crossLink}} when `localStorage` is not
   available.__
 
+  __This session store does not work with FastBoot. In order to use Ember
+  Simple Auth with FastBoot, configure the
+  {{#crossLink "CookieStore"}}{{/crossLink}} as the application's session
+  store.__
+
   @class LocalStorageStore
   @module ember-simple-auth/session-stores/local-storage
   @extends BaseStore
   @public
 */
 export default BaseStore.extend({
+  _isFastBoot: isFastBoot(),
+
   /**
     The `localStorage` key the store persists data in.
 
@@ -33,7 +41,16 @@ export default BaseStore.extend({
   init() {
     this._super(...arguments);
 
-    this._bindToStorageEvents();
+    this._boundHandler = bind(this, this._handleStorageEvent);
+    if (!this.get('_isFastBoot')) {
+      window.addEventListener('storage', this._boundHandler);
+    }
+  },
+
+  willDestroy() {
+    if (!this.get('_isFastBoot')) {
+      window.removeEventListener('storage', this._boundHandler);
+    }
   },
 
   /**
@@ -81,16 +98,14 @@ export default BaseStore.extend({
     return RSVP.resolve();
   },
 
-  _bindToStorageEvents() {
-    jQuery(window).bind('storage', (e) => {
-      if (e.originalEvent.key === this.key) {
-        this.restore().then((data) => {
-          if (!objectsAreEqual(data, this._lastData)) {
-            this._lastData = data;
-            this.trigger('sessionDataUpdated', data);
-          }
-        });
-      }
-    });
+  _handleStorageEvent(e) {
+    if (e.key === this.get('key')) {
+      this.restore().then((data) => {
+        if (!objectsAreEqual(data, this._lastData)) {
+          this._lastData = data;
+          this.trigger('sessionDataUpdated', data);
+        }
+      });
+    }
   }
 });

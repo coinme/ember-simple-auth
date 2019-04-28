@@ -1,11 +1,27 @@
-import Ember from 'ember';
+import { inject as service } from '@ember/service';
+import Mixin from '@ember/object/mixin';
+import { assert } from '@ember/debug';
+import { computed } from '@ember/object';
 import Configuration from './../configuration';
+import isFastBoot from 'ember-simple-auth/utils/is-fastboot';
+import { getOwner } from '@ember/application';
 
-const { inject: { service }, Mixin, assert, computed } = Ember;
+/**
+ *
+ * @param {ApplicationInstance} owner The ApplicationInstance that owns the session service
+ * @param {(...args: [any]) => any} callback Callback that will be invoked if the user is authenticated
+ */
+function runIfAuthenticated(owner, callback) {
+  const sessionSvc = owner.lookup('service:session');
+  if (sessionSvc.get('isAuthenticated')) {
+    callback();
+    return true;
+  }
+}
 
 /**
   __This mixin is used to make routes accessible only if the session is
-  not authenticated__ (e.g. login and registration routes). It defines a
+  not authenticated__ (e.g., login and registration routes). It defines a
   `beforeModel` method that aborts the current transition and instead
   transitions to the
   {{#crossLink "Configuration/routeIfAlreadyAuthenticated:property"}}{{/crossLink}}
@@ -34,6 +50,8 @@ export default Mixin.create({
   */
   session: service('session'),
 
+  _isFastBoot: isFastBoot(),
+
   /**
     The route to transition to if a route that implements the
     {{#crossLink "UnauthenticatedRouteMixin"}}{{/crossLink}} is accessed when
@@ -58,14 +76,16 @@ export default Mixin.create({
    `beforeModel` method is actually executed.
 
     @method beforeModel
-    @param {Transition} transition The transition that lead to this route
     @public
   */
   beforeModel() {
-    if (this.get('session').get('isAuthenticated')) {
-      assert('The route configured as Configuration.routeIfAlreadyAuthenticated cannot implement the UnauthenticatedRouteMixin mixin as that leads to an infinite transitioning loop!', this.get('routeName') !== this.get('routeIfAlreadyAuthenticated'));
-      this.transitionTo(this.get('routeIfAlreadyAuthenticated'));
-    } else {
+    const didRedirect = runIfAuthenticated(getOwner(this), () => {
+      let routeIfAlreadyAuthenticated = this.get('routeIfAlreadyAuthenticated');
+      assert('The route configured as Configuration.routeIfAlreadyAuthenticated cannot implement the UnauthenticatedRouteMixin mixin as that leads to an infinite transitioning loop!', this.get('routeName') !== routeIfAlreadyAuthenticated);
+
+      this.transitionTo(routeIfAlreadyAuthenticated);
+    });
+    if (!didRedirect) {
       return this._super(...arguments);
     }
   }

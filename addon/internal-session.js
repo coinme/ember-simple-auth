@@ -1,19 +1,12 @@
-import Ember from 'ember';
-import getOwner from 'ember-getowner-polyfill';
-
-const {
-  RSVP,
-  isNone,
-  isEmpty,
-  ObjectProxy,
-  Evented,
-  assign: emberAssign,
-  merge,
-  assert,
-  deprecate,
-  set,
-  debug
-} = Ember;
+import RSVP from 'rsvp';
+import { isEmpty, isNone } from '@ember/utils';
+import ObjectProxy from '@ember/object/proxy';
+import Evented from '@ember/object/evented';
+import { merge, assign as emberAssign } from '@ember/polyfills';
+import { deprecate } from '@ember/application/deprecations';
+import { set } from '@ember/object';
+import { debug, assert } from '@ember/debug';
+import { getOwner } from '@ember/application';
 const assign = emberAssign || merge;
 
 export default ObjectProxy.extend(Evented, {
@@ -48,11 +41,15 @@ export default ObjectProxy.extend(Evented, {
 
   invalidate() {
     this._busy = true;
-    assert('Session#invalidate requires the session to be authenticated!', this.get('isAuthenticated'));
+
+    if (!this.get('isAuthenticated')) {
+      this._busy = false;
+      return RSVP.Promise.resolve();
+    }
 
     let authenticator = this._lookupAuthenticator(this.authenticator);
-    return authenticator.invalidate(this.content.authenticated).then(() => {
-      authenticator.off('sessionDataUpdated');
+    return authenticator.invalidate(this.content.authenticated, ...arguments).then(() => {
+      authenticator.off('sessionDataUpdated', this, this._onSessionDataUpdated);
       this._busy = false;
       return this._clear(true);
     }, (error) => {
@@ -68,7 +65,7 @@ export default ObjectProxy.extend(Evented, {
 
     return this._callStoreAsync('restore').then((restoredContent) => {
       let { authenticator: authenticatorFactory } = restoredContent.authenticated || {};
-      if (!!authenticatorFactory) {
+      if (authenticatorFactory) {
         delete restoredContent.authenticated.authenticator;
         const authenticator = this._lookupAuthenticator(authenticatorFactory);
         return authenticator.restore(restoredContent.authenticated).then((content) => {
@@ -109,45 +106,41 @@ export default ObjectProxy.extend(Evented, {
   },
 
   _setup(authenticator, authenticatedContent, trigger) {
-    trigger = !!trigger && !this.get('isAuthenticated');
-    this.beginPropertyChanges();
+    trigger = Boolean(trigger) && !this.get('isAuthenticated');
     this.setProperties({
       isAuthenticated: true,
-      authenticator
+      authenticator,
+      'content.authenticated': authenticatedContent
     });
-    set(this.content, 'authenticated', authenticatedContent);
     this._bindToAuthenticatorEvents();
 
-    return this._updateStore().then(() => {
-      this.endPropertyChanges();
-      if (trigger) {
-        this.trigger('authenticationSucceeded');
-      }
-    }, () => {
-      this.setProperties({
-        isAuthenticated: false,
-        authenticator: null
+    return this._updateStore()
+      .then(() => {
+        if (trigger) {
+          this.trigger('authenticationSucceeded');
+        }
+      }, () => {
+        this.setProperties({
+          isAuthenticated: false,
+          authenticator: null,
+          'content.authenticated': {}
+        });
       });
-      set(this.content, 'authenticated', {});
-      this.endPropertyChanges();
-    });
   },
 
   _clear(trigger) {
-    trigger = !!trigger && this.get('isAuthenticated');
-    this.beginPropertyChanges();
+    trigger = Boolean(trigger) && this.get('isAuthenticated');
     this.setProperties({
       isAuthenticated: false,
-      authenticator:   null
+      authenticator:   null,
+      'content.authenticated': {}
     });
-    set(this.content, 'authenticated', {});
 
     return this._updateStore().then(() => {
-      this.endPropertyChanges();
       if (trigger) {
         this.trigger('invalidationSucceeded');
       }
-    }, () => this.endPropertyChanges());
+    });
   },
 
   _clearWithContent(content, trigger) {
@@ -158,7 +151,9 @@ export default ObjectProxy.extend(Evented, {
   setUnknownProperty(key, value) {
     assert('"authenticated" is a reserved key used by Ember Simple Auth!', key !== 'authenticated');
     let result = this._super(key, value);
-    this._updateStore();
+    if (!(/^_/).test(key)) {
+      this._updateStore();
+    }
     return result;
   },
 
@@ -172,14 +167,16 @@ export default ObjectProxy.extend(Evented, {
 
   _bindToAuthenticatorEvents() {
     const authenticator = this._lookupAuthenticator(this.authenticator);
-    authenticator.off('sessionDataUpdated');
-    authenticator.off('sessionDataInvalidated');
-    authenticator.on('sessionDataUpdated', (content) => {
-      this._setup(this.authenticator, content);
-    });
-    authenticator.on('sessionDataInvalidated', () => {
-      this._clear(true);
-    });
+    authenticator.on('sessionDataUpdated', this, this._onSessionDataUpdated);
+    authenticator.on('sessionDataInvalidated', this, this._onSessionDataInvalidated);
+  },
+
+  _onSessionDataUpdated(content) {
+    this._setup(this.authenticator, content);
+  },
+
+  _onSessionDataInvalidated() {
+    this._clear(true);
   },
 
   _bindToStoreEvents() {
@@ -187,7 +184,7 @@ export default ObjectProxy.extend(Evented, {
       if (!this._busy) {
         this._busy = true;
         let { authenticator: authenticatorFactory } = (content.authenticated || {});
-        if (!!authenticatorFactory) {
+        if (authenticatorFactory) {
           delete content.authenticated.authenticator;
           const authenticator = this._lookupAuthenticator(authenticatorFactory);
           authenticator.restore(content.authenticated).then((authenticatedContent) => {

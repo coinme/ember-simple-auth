@@ -1,16 +1,15 @@
-import Ember from 'ember';
-
-const { Object: EmberObject } = Ember;
+import EmberObject from '@ember/object';
+import { deprecate } from '@ember/application/deprecations';
 
 /**
   The base class for all authorizers. __This serves as a starting point for
   implementing custom authorizers and must not be used directly.__
 
-  Authorizers use the session data aqcuired by an authenticator when
-  authenticating the session to construct authrorization data that can e.g. be
-  injected into outgoing network requests etc. Depending on the authorization
+  Authorizers use the session data acquired by an authenticator when
+  authenticating the session to construct authorization data that can, e.g., be
+  injected into outgoing network requests. Depending on the authorization
   mechanism the authorizer implements, that authorization data might be an HTTP
-  header, query string parameters, a cookie etc.
+  header, query string parameters, a cookie, etc.
 
   __The authorizer has to fit the authenticator__ (see
   {{#crossLink "BaseAuthenticator"}}{{/crossLink}})
@@ -20,9 +19,21 @@ const { Object: EmberObject } = Ember;
   @class BaseAuthorizer
   @module ember-simple-auth/authorizers/base
   @extends Ember.Object
+  @deprecated BaseAuthorizer:class
   @public
 */
 export default EmberObject.extend({
+  init() {
+    this._super(...arguments);
+    deprecate(`Ember Simple Auth: Authorizers are deprecated in favour of setting headers directly.`,
+      false,
+      {
+        id: 'ember-simple-auth.baseAuthorizer',
+        until: '2.0.0',
+        url: 'https://github.com/simplabs/ember-simple-auth#deprecation-of-authorizers',
+      }
+    );
+  },
   /**
     Authorizes a block of code. This method will be invoked by the session
     service's {{#crossLink "SessionService/authorize:method"}}{{/crossLink}}

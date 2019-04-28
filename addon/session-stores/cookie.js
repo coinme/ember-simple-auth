@@ -1,16 +1,22 @@
+import RSVP from 'rsvp';
+import { computed } from '@ember/object';
+import { inject as service } from '@ember/service';
+import { later, cancel, scheduleOnce, next } from '@ember/runloop';
+import { isPresent, typeOf, isEmpty, isNone } from '@ember/utils';
+import { A } from '@ember/array';
+import { getOwner } from '@ember/application';
+import { warn } from '@ember/debug';
 import Ember from 'ember';
 import BaseStore from './base';
 import objectsAreEqual from '../utils/objects-are-equal';
 
-const { RSVP, computed, run: { next, cancel, later, scheduleOnce }, isEmpty, typeOf, testing, isBlank, isPresent, K, A } = Ember;
-
-const persistingProperty = function(beforeSet = K) {
+const persistingProperty = function(beforeSet = function() {}) {
   return computed({
     get(key) {
       return this.get(`_${key}`);
     },
     set(key, value) {
-      beforeSet.apply(this);
+      beforeSet.apply(this, [key, value]);
       this.set(`_${key}`, value);
       scheduleOnce('actions', this, this.rewriteCookie);
       return value;
@@ -32,22 +38,28 @@ const persistingProperty = function(beforeSet = K) {
   ```js
   // app/controllers/login.js
   export default Ember.Controller.extend({
-    rememberMe: false,
-
-    _rememberMeChanged: Ember.observer('rememberMe', function() {
-      const expirationTime = this.get('rememberMe') ? (14 * 24 * 60 * 60) : null;
-      this.set('session.store.cookieExpirationTime', expirationTime);
-    }
+    rememberMe: computed({
+      get(key) {
+        return false;
+      },
+      set(key, value) {
+        let expirationTime = value ? (14 * 24 * 60 * 60) : null;
+        this.set('session.store.cookieExpirationTime', expirationTime);
+        return value;
+      }
+    })
   });
   ```
 
-  __In order to keep multiple tabs/windows of an application in sync, this
-  store has to periodically (every 500ms) check the cookie for changes__ as
-  there are no events for cookie changes that the store could subscribe to. If
-  the application does not need to make sure all session data is deleted when
-  the browser is closed, the
-  {{#crossLink "LocalStorageStore"}}`localStorage` session store{{/crossLink}}
-  should be used.
+  __Applications that use FastBoot must use this session store by defining the
+  application session store like this:__
+
+  ```js
+  // app/session-stores/application.js
+  import CookieStore from 'ember-simple-auth/session-stores/cookie';
+
+  export default CookieStore.extend();
+  ```
 
   @class CookieStore
   @module ember-simple-auth/session-stores/cookie
@@ -55,11 +67,14 @@ const persistingProperty = function(beforeSet = K) {
   @public
 */
 export default BaseStore.extend({
+  _syncDataTimeout: null,
+  _renewExpirationTimeout: null,
+
   /**
     The domain to use for the cookie, e.g., "example.com", ".example.com"
     (which includes all subdomains) or "subdomain.example.com". If not
     explicitly set, the cookie domain defaults to the domain the session was
-    authneticated on.
+    authenticated on.
 
     @property cookieDomain
     @type String
@@ -83,9 +98,24 @@ export default BaseStore.extend({
   }),
 
   /**
+    The path to use for the cookie, e.g., "/", "/something".
+
+    @property cookiePath
+    @type String
+    @default '/'
+    @public
+  */
+  _cookiePath: '/',
+  cookiePath: persistingProperty(),
+
+  /**
     The expiration time for the cookie in seconds. A value of `null` will make
     the cookie a session cookie that expires and gets deleted when the browser
     is closed.
+
+    The recommended minimum value is 90 seconds. If your value is less than
+    that, the cookie may expire before its expiration time is extended
+    (expiration time is extended every 60 seconds).
 
     @property cookieExpirationTime
     @default null
@@ -93,27 +123,58 @@ export default BaseStore.extend({
     @public
   */
   _cookieExpirationTime: null,
-  cookieExpirationTime: persistingProperty(),
+  cookieExpirationTime: persistingProperty(function(key, value) {
+    // When nulling expiry time on purpose, we need to clear the cached value.
+    // Otherwise, `_calculateExpirationTime` will reuse it.
+    if (isNone(value)) {
+      this.get('_cookies').clear(`${this.get('cookieName')}-expiration_time`);
+    } else if (value < 90) {
+      warn('The recommended minimum value for `cookieExpirationTime` is 90 seconds. If your value is less than that, the cookie may expire before its expiration time is extended (expiration time is extended every 60 seconds).', false, { id: 'ember-simple-auth.cookieExpirationTime' });
+    }
+  }),
 
-  _secureCookies: window.location.protocol === 'https:',
+  _cookies: service('cookies'),
 
-  _syncDataTimeout: null,
+  _fastboot: computed(function() {
+    let owner = getOwner(this);
 
-  _renewExpirationTimeout: null,
+    return owner && owner.lookup('service:fastboot');
+  }),
+
+  _secureCookies: computed(function() {
+    if (this.get('_fastboot.isFastBoot')) {
+      return this.get('_fastboot.request.protocol') === 'https';
+    }
+
+    return window.location.protocol === 'https:';
+  }).volatile(),
 
   _isPageVisible: computed(function() {
-    const visibilityState = document.visibilityState || 'visible';
-    return visibilityState === 'visible';
+    if (this.get('_fastboot.isFastBoot')) {
+      return false;
+    } else {
+      const visibilityState = typeof document !== 'undefined' ? document.visibilityState || 'visible' : false;
+      return visibilityState === 'visible';
+    }
   }).volatile(),
 
   init() {
     this._super(...arguments);
 
-    next(() => {
-      this._syncData().then(() => {
-        this._renewExpiration();
+    let cachedExpirationTime = this._read(`${this.get('cookieName')}-expiration_time`);
+    if (cachedExpirationTime) {
+      this.set('cookieExpirationTime', parseInt(cachedExpirationTime, 10));
+    }
+
+    if (!this.get('_fastboot.isFastBoot')) {
+      next(() => {
+        this._syncData().then(() => {
+          this._renewExpiration();
+        });
       });
-    });
+    } else {
+      this._renew();
+    }
   },
 
   /**
@@ -126,7 +187,7 @@ export default BaseStore.extend({
   */
   persist(data) {
     this._lastData = data;
-    data           = JSON.stringify(data || {});
+    data = JSON.stringify(data || {});
     let expiration = this._calculateExpirationTime();
     this._write(data, expiration);
     return RSVP.resolve();
@@ -162,43 +223,33 @@ export default BaseStore.extend({
   },
 
   _read(name) {
-    let value = document.cookie.match(new RegExp(`${name}=([^;]+)`)) || [];
-    return decodeURIComponent(value[1] || '');
+    return this.get('_cookies').read(name) || '';
   },
 
   _calculateExpirationTime() {
     let cachedExpirationTime = this._read(`${this.get('cookieName')}-expiration_time`);
-    cachedExpirationTime     = !!cachedExpirationTime ? new Date().getTime() + cachedExpirationTime * 1000 : null;
+    cachedExpirationTime = cachedExpirationTime ? new Date().getTime() + cachedExpirationTime * 1000 : null;
     return this.get('cookieExpirationTime') ? new Date().getTime() + this.get('cookieExpirationTime') * 1000 : cachedExpirationTime;
   },
 
   _write(value, expiration) {
-    let _value = encodeURIComponent(value);
+    let cookieOptions = {
+      domain: this.get('cookieDomain'),
+      expires: isEmpty(expiration) ? null : new Date(expiration),
+      path: this.get('cookiePath'),
+      secure: this.get('_secureCookies')
+    };
     if (this._oldCookieName) {
       A([this._oldCookieName, `${this._oldCookieName}-expiration_time`]).forEach((oldCookie) => {
-        let expires     = `; expires=${new Date(0).toUTCString()}`;
-        document.cookie = this._createCookieString(oldCookie, _value, expires);
+        this.get('_cookies').clear(oldCookie);
       });
       delete this._oldCookieName;
     }
-
-    if (isBlank(value) && expiration !== 0) {
-      return;
-    }
-
-    let {
-      cookieName,
-      cookieExpirationTime
-    } = this.getProperties('cookieName', 'cookieDomain', 'cookieExpirationTime');
-
-    let expires     = isEmpty(expiration) ? '' : `; expires=${new Date(expiration).toUTCString()}`;
-    document.cookie = this._createCookieString(cookieName, _value, expires);
-
-    if (expiration !== null && cookieExpirationTime !== null) {
-      let cachedExpirationTime = this._read(`${cookieName}-expiration_time`);
-      let expiry = encodeURIComponent(cookieExpirationTime) || cachedExpirationTime;
-      let name = `${cookieName}-expiration_time`;
-      document.cookie = this._createCookieString(name, expiry, expires);
+    this.get('_cookies').write(this.get('cookieName'), value, cookieOptions);
+    if (!isEmpty(expiration)) {
+      let expirationCookieName = `${this.get('cookieName')}-expiration_time`;
+      let cachedExpirationTime = this.get('_cookies').read(expirationCookieName);
+      this.get('_cookies').write(expirationCookieName, this.get('cookieExpirationTime') || cachedExpirationTime, cookieOptions);
     }
   },
 
@@ -208,7 +259,7 @@ export default BaseStore.extend({
         this._lastData = data;
         this.trigger('sessionDataUpdated', data);
       }
-      if (!testing) {
+      if (!Ember.testing) {
         cancel(this._syncDataTimeout);
         this._syncDataTimeout = later(this, this._syncData, 500);
       }
@@ -218,7 +269,7 @@ export default BaseStore.extend({
   _renew() {
     return this.restore().then((data) => {
       if (!isEmpty(data) && data !== {}) {
-        data           = typeOf(data) === 'string' ? data : JSON.stringify(data || {});
+        data = typeOf(data) === 'string' ? data : JSON.stringify(data || {});
         let expiration = this._calculateExpirationTime();
         this._write(data, expiration);
       }
@@ -226,7 +277,7 @@ export default BaseStore.extend({
   },
 
   _renewExpiration() {
-    if (!testing) {
+    if (!Ember.testing) {
       cancel(this._renewExpirationTimeout);
       this._renewExpirationTimeout = later(this, this._renewExpiration, 60000);
     }
@@ -237,19 +288,13 @@ export default BaseStore.extend({
     }
   },
 
-  _createCookieString(name, value, expires) {
-    let cookieDomain = this.get('cookieDomain');
-    let domain = isEmpty(cookieDomain) ? '' : `;domain=${cookieDomain}`;
-    let path = '; path=/';
-    let secure = this._secureCookies ? ';secure' : '';
-    return `${name}=${value}${domain}${path}${expires}${secure}`;
-  },
-
   rewriteCookie() {
-    const data = this._read(this._oldCookieName);
+    // if `cookieName` has not been renamed, `oldCookieName` will be nil
+    const cookieName = this._oldCookieName || this._cookieName;
+    const data = this._read(cookieName);
     if (isPresent(data)) {
       const expiration = this._calculateExpirationTime();
       this._write(data, expiration);
     }
-  }
+  },
 });

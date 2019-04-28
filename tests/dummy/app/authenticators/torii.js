@@ -1,7 +1,5 @@
-import Ember from 'ember';
+import { inject as service } from '@ember/service';
 import Torii from 'ember-simple-auth/authenticators/torii';
-
-const { inject: { service } } = Ember;
 
 export default Torii.extend({
   torii: service(),
@@ -17,9 +15,7 @@ export default Torii.extend({
         data:     { 'grant_type': 'facebook_auth_code', 'auth_code': data.authorizationCode }
       }).then((response) => {
         return {
-          // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
           access_token: response.access_token,
-          // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
           provider: data.provider
         };
       });

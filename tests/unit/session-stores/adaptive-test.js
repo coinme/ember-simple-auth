@@ -1,23 +1,41 @@
-import { describe, beforeEach, afterEach, it } from 'mocha';
+import { run } from '@ember/runloop';
+import {
+  describe,
+  beforeEach,
+  afterEach,
+  it
+} from 'mocha';
 import { expect } from 'chai';
-import Ember from 'ember';
-import sinon from 'sinon';
+import sinonjs from 'sinon';
 import Adaptive from 'ember-simple-auth/session-stores/adaptive';
+import LocalStorage from 'ember-simple-auth/session-stores/local-storage';
 import itBehavesLikeAStore from './shared/store-behavior';
 import itBehavesLikeACookieStore from './shared/cookie-store-behavior';
-
-const { run } = Ember;
+import FakeCookieService from '../../helpers/fake-cookie-service';
+import createAdaptiveStore from '../../helpers/create-adaptive-store';
 
 describe('AdaptiveStore', () => {
+  let sinon;
   let store;
 
-  afterEach(() => {
-    store.clear();
+  beforeEach(function() {
+    sinon = sinonjs.sandbox.create();
   });
 
-  describe('when localStorage is available', () => {
-    beforeEach(() => {
-      store = Adaptive.create({ _isLocalStorageAvailable: true });
+  afterEach(function() {
+    store.clear();
+    sinon.restore();
+  });
+
+  describe('when localStorage is available', function() {
+    beforeEach(function() {
+      store = Adaptive.extend({
+        _createStore(storeType, options) {
+          return LocalStorage.create({ _isFastBoot: false }, options);
+        }
+      }).create({
+        _isLocalStorageAvailable: true
+      });
     });
 
     itBehavesLikeAStore({
@@ -27,9 +45,16 @@ describe('AdaptiveStore', () => {
     });
   });
 
-  describe('when localStorage is not available', () => {
-    beforeEach(() => {
-      store = Adaptive.create({ _isLocalStorageAvailable: false });
+  describe('when localStorage is not available', function() {
+    let cookieService;
+    beforeEach(function() {
+      cookieService = FakeCookieService.create();
+      sinon.spy(cookieService, 'read');
+      sinon.spy(cookieService, 'write');
+      store = createAdaptiveStore(cookieService, {
+        _isLocal: false,
+        _cookies: cookieService,
+      });
     });
 
     itBehavesLikeAStore({
@@ -39,12 +64,15 @@ describe('AdaptiveStore', () => {
     });
 
     itBehavesLikeACookieStore({
-      createStore(options = {}) {
+      createStore(cookieService, options = {}) {
         options._isLocalStorageAvailable = false;
-        return Adaptive.create(options);
+        return createAdaptiveStore(cookieService, options, {
+          _cookies: cookieService,
+          _fastboot: { isFastBoot: false },
+        });
       },
       renew(store, data) {
-        store.get('_store')._renew(data);
+        return store.get('_store')._renew(data);
       },
       sync(store) {
         store.get('_store')._syncData();
@@ -55,11 +83,10 @@ describe('AdaptiveStore', () => {
       }
     });
 
-    it('persists to cookie when cookie attributes change', () => {
+    it('persists to cookie when cookie attributes change', function() {
+      let now = new Date();
+
       run(() => {
-        let store = Adaptive.create({
-          _isLocalStorageAvailable: false
-        });
         store.persist({ key: 'value' });
         store.setProperties({
           cookieName:           'test:session',
@@ -67,7 +94,15 @@ describe('AdaptiveStore', () => {
         });
       });
 
-      expect(document.cookie).to.contain('test:session-expiration_time=60');
+      expect(cookieService.write).to.have.been.calledWith(
+        'test:session-expiration_time',
+        60,
+        sinon.match(function({ domain, expires, path, secure }) {
+          return domain === null &&
+            path === '/' &&
+            secure === false && expires >= new Date(now.getTime() + 60 * 1000);
+        })
+      );
     });
   });
 });
