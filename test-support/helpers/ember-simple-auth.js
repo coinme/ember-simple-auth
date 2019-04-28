@@ -14,17 +14,17 @@ export function authenticateSession(app, sessionData) {
   const session = container.lookup('service:session');
   ensureAuthenticator(app, container);
   session.authenticate(TEST_CONTAINER_KEY, sessionData);
-  return wait();
-};
+  return app.testHelpers.wait();
+}
 
 export function currentSession(app) {
   return app.__container__.lookup('service:session');
-};
+}
 
 export function invalidateSession(app) {
   const session = app.__container__.lookup('service:session');
   if (session.get('isAuthenticated')) {
     session.invalidate();
   }
-  return wait();
-};
+  return app.testHelpers.wait();
+}

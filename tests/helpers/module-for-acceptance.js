@@ -1,9 +1,7 @@
 import { module } from 'qunit';
-import Ember from 'ember';
+import { resolve } from 'rsvp';
 import startApp from '../helpers/start-app';
 import destroyApp from '../helpers/destroy-app';
-
-const { RSVP: { Promise } } = Ember;
 
 export default function(name, options = {}) {
   module(name, {
@@ -11,17 +9,13 @@ export default function(name, options = {}) {
       this.application = startApp();
 
       if (options.beforeEach) {
-        // jscs:disable requireSpread
         return options.beforeEach.apply(this, arguments);
-        // jscs:enable requireSpread
       }
     },
 
     afterEach() {
-      // jscs:disable requireSpread
       let afterEach = options.afterEach && options.afterEach.apply(this, arguments);
-      // jscs:enable requireSpread
-      return Promise.resolve(afterEach).then(() => destroyApp(this.application));
+      return resolve(afterEach).then(() => destroyApp(this.application));
     }
   });
 }

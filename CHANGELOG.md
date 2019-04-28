@@ -1,3 +1,218 @@
+# 1.8.2
+
+* Support for [ember-cookies](https://github.com/simplabs/ember-cookies) 0.4.0
+  which clears a deprecation, see #1746.
+
+This release would not have been possible without the contributions by
+[@jessica-jordan](https://github.com/jessica-jordan),
+[@Alonski](https://github.com/Alonski) and
+[@marcoow](https://github.com/marcoow).
+Thanks a lot!
+
+# 1.8.1
+
+* Additional patch fix for deprecation warning for Evented#off method on Ember 3.6+, see #1725
+
+This release would not have been possible without the contributions by
+[@MichalBryxi](https://github.com/MichalBryxi) and [@richard-viney](https://github.com/richard-viney).
+Thanks a lot!
+
+
+# 1.8.0
+
+* Fixes deprecation warning for Evented#off method on Ember 3.6+, see #1722
+* Support for [ember-fetch](https://github.com/ember-cli/ember-fetch) 6.0+, see #1713
+* Fixes error handling for the Torii authenticator, making errors throw as expected
+  if a Promise is rejected, see #1696
+* Updates ember-try test scenarios with Ember 3.0, see [this commit](https://github.com/simplabs/ember-simple-auth/commit/285d36ab2f4e0ae02b677549cec731a5cbaa5cf2)
+
+This release would not have been possible without the contributions by
+[@marcoow](https://github.com/marcoow), [@mike-north](https://github.com/mike-north),
+[@jfschaff](https://github.com/jfschaff), [@geekygrappler](https://github.com/geekygrappler),
+[@quaertym](https://github.com/quaertym), [@runspired](https://github.com/runspired),
+[@kevinansfield](https://github.com/kevinansfield), [@drewchandler](https://github.com/drewchandler),
+[@andreyfel](https://github.com/andreyfel), [@Turbo87](https://github.com/Turbo87),
+[@MichalBryxi](https://github.com/MichalBryxi) and [@richard-viney](https://github.com/richard-viney).
+Thanks a lot! ✨
+
+# 1.7.0
+
+* The `baseURL` configuration property is now deprecated; use the `rootURL`
+  property instead, see #1597.
+* ESA works with ember-fetch@"^2.1.0 || ^3.0.0 || ^4.0.0 || ^5.0.0" now, see
+  #1608.
+* Session events are now bound to methods on the `application` route
+  correctly, see #1604.
+* The repeated `isFastBoot` properties used in various places in the codebase
+  have been replaced with a computed property macro, see #1623.
+* The `broccoli-file-creator` dependency has been raised to `^2.0.0`, see
+  #1636.
+* The API docs and README habe been improved for greater clarity and better
+  examples, see #1583, #1591, #1631, #1598.
+* The dummy app now implements remember-me functionality, see #1606.
+
+# 1.6.0
+
+* Authorizers are now deprecated, see #1532. For more information on the
+  deprecation, refer to the
+  [deprecation guide](https://github.com/simplabs/ember-simple-auth#deprecation-of-authorizers).
+* The
+  [session service's `invalidate` method](https://ember-simple-auth.com/api/classes/SessionService.html#method_invalidate)
+  can now be called when the session is already invalidated, and would simply
+  do nothing in that case, see #1555.
+* The previously removed `ember-simple-auth` instance initializer has been
+  added again which fixes a regression in applications that relied on its
+  existence, see #1565.
+* Usage of the private `beginPropertyChanges`/`endPropertyChanges` methods has
+  been removed, see #1554.
+
+# 1.5.1
+
+* Session restoration is now setup in an initializer (vs. an instance
+  initializer), see #1547.
+* The new acceptance test helpers introduced with 1.5.0 no longer need to
+  manually set up the router (which was using private API), see #1548.
+
+# 1.5.0
+
+* The acceptance test helpers no longer rely on the global `wait` test helper,
+  see #1516.
+* A new set of acceptance test helpers was introduced that is imported from the
+  `ember-simple-auth` module namespaces and supports Ember's new testing model,
+  see #1536.
+* The `ember-cookies` dependency now allows `^0.1.0` as well as `^0.2.0`, see
+  #1538.
+
+# 1.4.2
+
+* The broken `warn()` method on the `cookie` session store has been fixed,
+  see #1502.
+* The event listener on the `local-storage` session store is correctly removed,
+  see #1498.
+
+# 1.4.1
+
+* The `fastboot-app-server` dependency has been removed, see #1446.
+* The `torii` authenticator will no longer override the session data with the
+  data returned from the torii provider when restoring the session, see #1310.
+* `Ember.testing` is no longer destructured which could cause problems with
+  recent `ember-qunit`/`ember-cli-qunit`/`ember-test-helpers` versions, see
+  #1477.
+* The `fastboot-tests` and `guides` directories are no longer distributed with
+  the npm package, see #1470.
+* The OAuth 2.0 authenticator will now reject correctly for responses with an
+  invalid (non-JSON) response body, see #1487, #1442.
+* The cookie that stores the session cookie's expiration time is now cleared
+  when that time is set to `null`, see #1463.
+
+# 1.4.0
+
+* A new session store has been added that is based on `sessionStorage`, see
+  #1392.
+* Several documentation errors and typos have been fixed, see #1393, #1372,
+  #1374, #1366, #1346.
+
+# 1.3.0
+
+* ESA now uses ember-fetch instead of ember-network. ember-fetch is better
+  maintained than ember-network and seems to emerge as the
+  community-agreed-upon standard for a FastBoot compliant `fetch` polyfill;
+  see #1288.
+* A new OAuth 2.0 authenticator that implements the OAuth 2.0
+  _"Implicit Grant"_ has been added, along with a route mixin that makes it
+  easy to use it; see #1252.
+* ESA now depends on ember-cli-babel `^6.0.0`, allowing host applications to
+  take advantage of Ember CLI's new `targets` feature, see #1295.
+* The `DataAdapterMixin` now allows overriding the `handleResponse` method in a
+  way that bypasses ESA's built in logic to invalidate the session on 401
+  responses while still being able to call `_super` to invoke the base
+  authenticator's logic; see #1290.
+
+# 1.2.2
+
+* The session is now correctly restored when running Ember 2.13, see #1267.
+* The mechanism that triggers authentication in the `AuthenticatedRouteMixin`
+  is now encapsulated in the (overridable) `triggerAuthentication` method, see
+  #1278.
+* The ember-cookies dependency has been upgraded to 0.0.13, see #1281.
+
+# 1.2.1
+
+* Arguments passed to the session service's `invalidate` method will now be
+  passed on to the authenticator's `invalidate` method along with the session
+  data, see #1093.
+* The generators for the torii authenticator will now generate a valid file,
+  including an `Ember` import, see #1216.
+* The cookie session store now allows defining the cookie path, see #1201.
+* The cookie session store will now correctly rewrite the cookie when the
+  cookie domain or expiration time change but the cookie name remains
+  unchanged, see #1234.
+* The `AuthenticatedRouteMixin` and `UnauthenticatedRouteMixin` will no longer
+  return the return value of `transitionTo` from their `beforeModel` methods,
+  see #1247.
+* A deprecation caused by a call to `Ember.warn` without a warning id has been
+  fixed, see #1250.
+* The cookie session store will now correctly restore its expiration time from
+  the expiration time cookie if present, see #1257.
+* Some parts of the documentation have been improved, see #1253, #1259, #1254.
+
+# 1.2.0
+
+* The [deprecated `bind` method from jQuery](http://api.jquery.com/bind/) has
+  been replaced with `on`, see #1184.
+* The development dependencies have been updated and unused dependencies have
+  been removed, see #1182, #1161, #1183.
+* JSHint has been replaced with ESLint, see #1185, #1186.
+
+# 1.2.0-beta.2
+
+* The `getOwner` function is now read from the `Ember` object instead of
+  importing it from `ember-getowner-polyfill` which fixes a deprecation, see
+  #1124.
+* Transitions are no longer aborted in the `AuthenticatedRouteMixin` and
+  `UnauthenticatedRouteMixin` which was simply unnecessary, see #1126.
+* There is now an assertion checking that a valid authorizer has been passed to
+  the session's `authorize` method, see #1132.
+* The attempted transition is now being stored in a cookie when Ember Simple
+  Auth intercepts a transition and redirects to the login route in the
+  `AuthenticatedRouteMixin` so that the transition can be retried in the
+  browser, see #1136.
+* The `ember-cookies` dependency has been updated to 0.0.11 which fixes a
+  deprecation, see #1153.
+* Ember Simple Auth now longer uses `Ember.K`, see #1166.
+* Deprecated ways to use Ember's deprecations which caused a deprecation
+  themselves have been fixed, see #1170.
+* There is now a warning when a `cookieExpirationTime` lower than 90 seconds is
+  set as that will lead to problems with Ember Simple Auth's session time
+  extension mechanism, see #1160.
+* Several parts of the documentation have been fixed and a new guide on
+  implementing authentication with github has been added, see #1143, #1142,
+  #1121, #1139.
+
+# 1.2.0-beta.1
+
+* Ember Simple Auth now supports FastBoot out-of-the-box (when using the cookie
+  session store), see #1035.
+* Ember CLI's new `rootURL` setting is now used correctly, see #1070.
+* The cookie session store will now rewrite its cookies when any of its
+  configurable properties (like cookie name) change, see #1056.
+* The `DataAdapterMixin` now also overrides the `headersForRequest` method
+  which makes it behave correctly with Ember Data 1.7 and above, see #1033.
+* Configurable routes like the login route etc. are now configured via
+  overriding properties of the respective route mixins instead of settings in
+  `config/environment.js`, see #985.
+* The OAuth 2.0 Passwort Grant authenticator now allows to define custom
+  headers to be sent with authentication requests, see #1018.
+* Authenticators can now reject with the server response when requests fail,
+  see #1012.
+* Server responses are now validated before authenticators resolve
+  authentication, see #957.
+* The offset that the OAuth 2.0 Password Grant authenticator uses when
+  refreshing access tokens is now defined in an (overridable) property, see
+  #840.
+* The default cookie names that the cookie session store uses are now compliant
+  with RFC 2616, see #978.
+
 # 1.1.0
 
 There were no changes since 1.1.0-beta.5.

@@ -2,7 +2,7 @@
 
 __[Ember Simple Auth API docs](http://ember-simple-auth.com/api/)__
 
-__[![Slack Status](https://ember-community-slackin.herokuapp.com/badge.svg)](https://embercommunity.slack.com/messages/ember-simple-auth/)__
+__[![Discord](https://img.shields.io/discord/480462759797063690.svg?logo=discord)](https://discord.gg/zT3asNS)__
 
 Ember Simple Auth __supports all Ember.js versions starting with 1.12.__
 
@@ -46,11 +46,11 @@ authorization mechanisms__.
 **Other Guides**
 
 * [Managing a current User](guides/managing-current-user.md)
+* [GitHub authorization with torii](guides/auth-torii-with-github.md)
 
 **Other Resources**
 
-* [Configuration](#configuration)
-* [Upgrading from Pre-1.0 versions](http://log.simplabs.com/post/131698328145/updating-to-ember-simple-auth-10)
+* [Upgrading from Pre-1.0 versions](https://simplabs.com/blog/2015/11/27/updating-to-ember-simple-auth-1.0.html)
 * [API Documentation](http://ember-simple-auth.com/api/)
 
 ## What does it do?
@@ -89,7 +89,7 @@ requests such as Ember Data requests__.
 
 __Ember Simple Auth comes with a
 [dummy app](tests/dummy)
-that implementes a complete auth solution__ including authentication against
+that implements a complete auth solution__ including authentication against
 the application's own server as well as Facebook, authorization of Ember Data
 requests and error handling. __Check out that dummy app for reference.__ To
 start it, run
@@ -97,7 +97,7 @@ start it, run
 ```
 git clone https://github.com/simplabs/ember-simple-auth.git
 cd ember-simple-auth
-npm install && bower install && ember serve
+yarn install && ember serve
 ```
 
 and go to [http://localhost:4200](http://localhost:4200).
@@ -111,12 +111,12 @@ ember install ember-simple-auth
 ```
 
 ### Upgrading from ember-cli-simple-auth / pre-1.0 release?
-The 1.0 release of ember-simple-auth introduced a lot of breaking changes, but thankfully [the upgrade path isn't too hard](http://log.simplabs.com/post/131698328145/updating-to-ember-simple-auth-10).
+The 1.0 release of ember-simple-auth introduced a lot of breaking changes, but thankfully [the upgrade path isn't too hard](https://simplabs.com/blog/2015/11/27/updating-to-ember-simple-auth-1.0.html).
 
 ## Walkthrough
 
 Once the library is installed, __the session service can be injected wherever
-needed in the application__. In order to e.g. display login/logout buttons
+needed in the application__. In order to display login/logout buttons
 depending on the current session state, inject the service into the respective
 controller or component and __query its
 [`isAuthenticated` property](http://ember-simple-auth.com/api/classes/SessionService.html#property_isAuthenticated)
@@ -124,10 +124,11 @@ in the template__:
 
 ```js
 // app/controllers/application.js
-import Ember from 'ember';
+import Controller from '@ember/controller';
+import { inject as service } from '@ember/service';
 
-export default Ember.Controller.extend({
-  session: Ember.inject.service('session')
+export default Controller.extend({
+  session: service()
 
   …
 });
@@ -154,10 +155,11 @@ to invalidate the session__ and log the user out:
 
 ```js
 // app/controllers/application.js
-import Ember from 'ember';
+import Controller from '@ember/controller';
+import { inject as service } from '@ember/service';
 
-export default Ember.Controller.extend({
-  session: Ember.inject.service('session'),
+export default Controller.extend({
+  session: service(),
 
   …
 
@@ -204,10 +206,11 @@ the __session can be authenticated with the
 
 ```js
 // app/controllers/login.js
-import Ember from 'ember';
+import Controller from '@ember/controller';
+import { inject as service } from '@ember/service';
 
-export default Ember.Controller.extend({
-  session: Ember.inject.service('session'),
+export default Controller.extend({
+  session: service(),
 
   actions: {
     authenticate() {
@@ -234,10 +237,10 @@ into the application route__:
 
 ```js
 // app/routes/application.js
-import Ember from 'ember';
+import Route from '@ember/routing/route';
 import ApplicationRouteMixin from 'ember-simple-auth/mixins/application-route-mixin';
 
-export default Ember.Route.extend(ApplicationRouteMixin);
+export default Route.extend(ApplicationRouteMixin);
 ```
 
 The `ApplicationRouteMixin` automatically maps the session events to the
@@ -255,10 +258,10 @@ into the respective route:
 
 ```js
 // app/routes/protected.js
-import Ember from 'ember';
+import Route from '@ember/routing/route';
 import AuthenticatedRouteMixin from 'ember-simple-auth/mixins/authenticated-route-mixin';
 
-export default Ember.Route.extend(AuthenticatedRouteMixin);
+export default Route.extend(AuthenticatedRouteMixin);
 ```
 
 This will make the route (and all of its subroutes) transition to the `login`
@@ -273,7 +276,21 @@ Router.map(function() {
 ```
 
 The route to transition to if the session is not authenticated can also be
-[configured](#configuration) to be another one than `login`.
+[overridden](https://ember-simple-auth.com/api/classes/AuthenticatedRouteMixin.html#property_authenticationRoute)
+to be another one than `login`.
+
+It is recommended to nest all of an application's routes that require the
+session to be authenticated under a common parent route:
+
+```js
+// app/router.js
+Router.map(function() {
+  this.route('login');
+  this.route('authenticated', { path: '' }, function() {
+    // all routes that require the session to be authenticated
+  });
+}
+```
 
 To prevent a route from being accessed when the session is authenticated (which
 makes sense for login and registration routes for example), mix the
@@ -313,7 +330,9 @@ into the application adapter:
 import DS from 'ember-data';
 import DataAdapterMixin from 'ember-simple-auth/mixins/data-adapter-mixin';
 
-export default DS.JSONAPIAdapter.extend(DataAdapterMixin, {
+const { JSONAPIAdapter } = DS;
+
+export default JSONAPIAdapter.extend(DataAdapterMixin, {
   authorizer: 'authorizer:oauth2'
 });
 ```
@@ -354,9 +373,10 @@ in the Ember container:
 this.get('session').authenticate('authenticator:some');
 ```
 
-Ember Simple Auth comes with 3 authenticators:
+Ember Simple Auth comes with 4 authenticators:
 
 * [`OAuth2PasswordGrantAuthenticator`](http://ember-simple-auth.com/api/classes/OAuth2PasswordGrantAuthenticator.html): an OAuth 2.0 authenticator that implements the _"Resource Owner Password Credentials Grant Type"_
+* [`OAuth2ImplicitGrantAuthenticator`](http://ember-simple-auth.com/api/classes/OAuth2ImplicitGrantAuthenticator.html): an OAuth 2.0 authenticator that implements the _"Implicit Grant Type"_
 * [`DeviseAuthenticator`](http://ember-simple-auth.com/api/classes/DeviseAuthenticator.html): an authenticator compatible with the popular Ruby on Rails authentication plugin [devise](https://github.com/plataformatec/devise)
 * [`ToriiAuthenticator`](http://ember-simple-auth.com/api/classes/ToriiAuthenticator.html): an authenticator that wraps the [torii library](https://github.com/Vestorly/torii)
 
@@ -366,9 +386,9 @@ authenticator
 
 ```js
 // app/authenticators/oauth2.js
-import OAuth2PasswordGrant from 'ember-simple-auth/authenticators/oauth2-password-grant';
+import OAuth2PasswordGrantAuthenticator from 'ember-simple-auth/authenticators/oauth2-password-grant';
 
-export default OAuth2PasswordGrant.extend();
+export default OAuth2PasswordGrantAuthenticator.extend();
 ```
 
 and invoke the session service's `authenticate` method with the respective
@@ -385,9 +405,9 @@ e.g.:
 
 ```js
 // app/authenticators/oauth2.js
-import OAuth2PasswordGrant from 'ember-simple-auth/authenticators/oauth2-password-grant';
+import OAuth2PasswordGrantAuthenticator from 'ember-simple-auth/authenticators/oauth2-password-grant';
 
-export default OAuth2PasswordGrant.extend({
+export default OAuth2PasswordGrantAuthenticator.extend({
   serverTokenEndpoint: '/custom/endpoint'
 });
 ```
@@ -425,6 +445,8 @@ export default Base.extend({
 
 __Authorizers use the session data acquired by the authenticator to construct
 authorization data__ that can be injected into outgoing network requests. As
+[Deprecation warning: Authorizers are deprecated](https://github.com/simplabs/ember-simple-auth#deprecation-of-authorizers)
+
 the authorizer depends on the data that the authenticator acquires,
 __authorizers and authenticators have to fit together__.
 
@@ -463,7 +485,9 @@ adapter to automatically authorize all API requests:
 import DS from 'ember-data';
 import DataAdapterMixin from 'ember-simple-auth/mixins/data-adapter-mixin';
 
-export default DS.JSONAPIAdapter.extend(DataAdapterMixin, {
+const { JSONAPIAdapter } = DS;
+
+export default JSONAPIAdapter.extend(DataAdapterMixin, {
   authorizer: 'authorizer:some'
 });
 ```
@@ -500,6 +524,90 @@ export default Base.extend({
   }
 });
 ```
+
+### Deprecation of Authorizers
+
+Authorizers and the session service's `authorize` method are deprecated and
+will be removed from Ember Simple Auth 2.0. The concept seemed like a good idea
+in the early days of Ember Simple Auth, but proved to provide limited value for
+the added complexity. To replace authorizers in an application, simply get the
+session data from the session service and inject it where needed.
+
+In most cases, authorizers are used with Ember Data adapters (refer to the
+[Ember Guides](https://guides.emberjs.com/v3.0.0/models/customizing-adapters/#toc_headers-customization)
+for details on adapters). Replacing authorizers in these scenarios is
+straightforward.
+
+Examples:
+
+```js
+// OAuth 2
+import DS from 'ember-data';
+import { inject as service } from '@ember/service';
+import { isPresent } from '@ember/utils';
+import DataAdapterMixin from "ember-simple-auth/mixins/data-adapter-mixin";
+
+const { JSONAPIAdapter } = DS;
+
+export default JSONAPIAdapter.extend(DataAdapterMixin, {
+  session: service(), 
+  authorize(xhr) {
+    let { access_token } = this.get('session.data.authenticated');
+    if (isPresent(access_token)) {
+      xhr.setRequestHeader('Authorization', `Bearer ${access_token}`);
+    }
+  }
+});
+
+// DataAdapterMixin already injects the `session` service. It is
+// included here for clarity.
+```
+
+```js
+// Devise
+import DS from 'ember-data';
+import { inject as service } from '@ember/service';
+import DataAdapterMixin from "ember-simple-auth/mixins/data-adapter-mixin";
+
+const { JSONAPIAdapter } = DS;
+
+export default JSONAPIAdapter.extend(DataAdapterMixin, {
+  session: service(),
+  // defaults
+  // identificationAttributeName: 'email'
+  // tokenAttributeName: 'token'
+  authorize(xhr) {
+    let { email, token } = this.get('session.data.authenticated');
+    let authData = `Token token="${token}", email="${email}"`;
+    xhr.setRequestHeader('Authorization', authData);
+  }
+});
+```
+
+When used with `ember-fetch` the `authorize` method will not be called and the
+`headers` computed property must be used instead, e.g.:
+
+```js
+export default DS.JSONAPIAdapter.extend(AdapterFetch, DataAdapterMixin, {
+  headers: computed('session.data.authenticated.token', function() {
+    const headers = {};
+    if (this.session.isAuthenticated) {
+      headers['Authorization'] = `Bearer ${this.session.data.authenticated.token}`;
+    }
+
+    return headers;
+  }),
+});
+```
+
+### Deprecation of Client ID as Header
+
+Sending the Client ID as Base64 Encoded in the Authorization Header was against the spec and caused
+incorrect behavior with OAuth2 Servers that had implemented the spec properly.
+
+To change this behavior set `sendClientIdAsQueryParam` to `true`, and the client id will be correctly
+sent as a query parameter. Leaving it set to `false` (currently default) will result in a deprecation
+notice until the next major version.
 
 ## Session Stores
 
@@ -540,7 +648,17 @@ store if `localStorage` is available.
 
 [The Cookie store](http://ember-simple-auth.com/api/classes/CookieStore.html)
 stores its data in a cookie. This is used by the adaptive store if
-`localStorage` is not available.
+`localStorage` is not available. __This store must be used when the
+application uses
+[FastBoot](https://github.com/ember-fastboot/ember-cli-fastboot).__
+
+#### `sessionStorage` Store
+
+[The `sessionStorage` store](http://ember-simple-auth.com/api/classes/SessionStorageStore.html)
+stores its data in the browser's `sessionStorage`. See [the Web Storage docs](
+https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API) for details on
+`sessionStorage` and `localStorage`. [caniuse](http://caniuse.com/#feat=namevalue-storage)
+has up-to-date information on browser support of `sessionStorage` and `localStorage`.
 
 #### Ephemeral Store
 
@@ -590,48 +708,163 @@ export default Base.extend({
 });
 ```
 
+## FastBoot
+
+Ember Simple Auth works with FastBoot out of the box as long as the Cookie
+session store is being used. In order to enable the cookie store, define it as
+the application store:
+
+```js
+// app/session-stores/application.js
+import CookieStore from 'ember-simple-auth/session-stores/cookie';
+
+export default CookieStore.extend();
+```
+
+If you are using the
+[`OAuth2PasswordGrantAuthenticator`](http://ember-simple-auth.com/api/classes/OAuth2PasswordGrantAuthenticator.html),
+or
+[`DeviseAuthenticator`](http://ember-simple-auth.com/api/classes/DeviseAuthenticator.html),
+you must add `node-fetch` to your list of FastBoot whitelisted dependencies
+in `package.json`:
+
+```json
+{
+  "fastbootDependencies": [
+    "node-fetch"
+  ]
+}
+```
+
 ## Testing
 
 Ember Simple Auth comes with a __set of test helpers that can be used in
-acceptance tests__:
+acceptance tests__.
 
-* `currentSession(app)`: returns the current session.
-* `authenticateSession(app, sessionData)`: authenticates the session; the
+### ember-cli-qunit 4.2.0 and greater or ember-qunit 3.2.0 and greater
+
+If your app is using `ember-cli-qunit` [4.2.0 or
+greater](https://github.com/ember-cli/ember-cli-qunit/blob/master/CHANGELOG.md#v420-2017-12-17) or `ember-qunit` 3.2.0 or greater,
+you may want to migrate to the [more modern testing
+syntax](https://dockyard.com/blog/2018/01/11/modern-ember-testing). In that
+case, helpers can be imported from the `ember-simple-auth` addon namespace.
+
+```js
+// tests/acceptance/…
+import { currentSession, authenticateSession, invalidateSession} from 'ember-simple-auth/test-support';
+```
+
+The new-style helpers have the following function signatures:
+* `currentSession()` returns the current session.
+* `authenticateSession(sessionData)` authenticates the session asynchronously;
+  the optional `sessionData` argument can be used to mock an authenticator
+  response (e.g. a token or user).
+* `invalidateSession()` invalidates the session asynchronously.
+
+New tests using the async `authenticateSession` helper will look like this:
+
+```js
+import { module, test } from 'qunit';
+import { setupApplicationTest } from 'ember-qunit';
+import { currentURL, visit } from '@ember/test-helpers';
+import { authenticateSession } from 'ember-simple-auth/test-support';
+
+module('Acceptance | super secret url', function(hooks) {
+  setupApplicationTest(hooks);
+
+  test('authenticated users can visit /super-secret-url', async function(assert) {
+    await authenticateSession({
+      userId: 1,
+      otherData: 'some-data'
+    });
+    await visit('/super-secret-url');
+    assert.equal(currentURL(), '/super-secret-url', 'user is on super-secret-url');
+  });
+});
+```
+
+### ember-cli-qunit 4.1.0 and earlier
+
+For apps using earlier versions of ember-cli-qunit, you can use the
+test helpers with the following signature:
+
+* `currentSession(this.application)`: returns the current session of your test application.
+* `authenticateSession(this.application, sessionData)`: authenticates the session; the
   optional `sessionData` argument can be used to mock an authenticator
   response - e.g. a token.
-* `invalidateSession(app)`: invalidates the session.
+* `invalidateSession(this.application)`: invalidates the current session in your test application.
 
-The test helpers can be imported from the `helpers/ember-simple-auth`
-module in the application's namespace:
+For existing apps, the test helpers are merged into your application's namespace,
+and can be imported from the `helpers/ember-simple-auth` module like this:
 
 ```js
 // tests/acceptance/…
 import { currentSession, authenticateSession, invalidateSession } from '<app-name>/tests/helpers/ember-simple-auth';
 ```
 
+The test helpers used in apps using ember-cli-qunit 4.1.0 and earlier all require access to the test application instance.
+
+An application instance is automatically created for you once you use the `moduleForAcceptance` test helper
+that is provided in the acceptance test blueprint.
+The app instance created through `moduleForAcceptance` is available as `this.application` in your test cases:
+
+```js
+import moduleForAcceptance from '<your-app-name>/tests/helpers/module-for-acceptance';
+
+// creates and destroys a test application instance before / after each test case
+moduleForAcceptance('Acceptance | authentication');
+
+test('user is authenticating', function(assert) {
+  // returns the instance of your test application
+  let app = this.application;
+});
+```
+
+Pass in your application instance as a first parameter to the test helper functions to
+get a handle on your application's session store in your subsequent test cases.
+Here is a full example of how an acceptance test might look like if your test suite is leveraging `ember-qunit`:
+
+```js
+import Ember from 'ember';
+import { test } from 'qunit';
+import moduleForAcceptance from 'simple-tests/tests/helpers/module-for-acceptance';
+import { currentSession, authenticateSession } from 'simple-tests/tests/helpers/ember-simple-auth';
+
+moduleForAcceptance('Acceptance | authentication');
+
+test('user is authenticating', function(assert) {
+  visit('/login');
+
+  andThen(() => {
+    assert.equal(currentURL(), '/login');
+    assert.notOk(currentSession(this.application).get('isAuthenticated'), 'the user is yet unauthenticated');
+
+    // this will authenticate the current session of the test application
+    authenticateSession(this.application, { token: 'abcdDEF', token_type: 'Bearer' });
+
+    andThen(() => {
+      assert.ok(currentSession(this.application).get('isAuthenticated'), 'the user is authenticated');
+      assert.deepEqual(currentSession(this.application).get('data.authenticated'), {
+        authenticator: 'authenticator:test',
+        token: 'abcdDEF',
+        token_type: 'Bearer'
+      });
+    });
+  });
+});
+```
+
+If you're an `ember-mocha` user, we can recommend to check out this
+[example from the test suite of ember-simple-auth itself](https://github.com/simplabs/ember-simple-auth/blob/master/tests/acceptance/authentication-test.js).
+
 ## Other guides
 
 * [Managing current User](guides/managing-current-user.md)
 
-## Configuration
-
-Ember Simple Auth is configured via the `'ember-simple-auth'` section in the
-application's `config/environment.js` file, e.g.:
-
-```js
-ENV['ember-simple-auth'] = {
-  baseURL: 'path/to/base/url'
-};
-```
-
-See the
-[API docs](http://ember-simple-auth.com/api/classes/Configuration.html)
-for the available settings.
-
 ## License
 
 Ember Simple Auth is developed by and &copy;
-[simplabs GmbH/Marco Otte-Witte](http://simplabs.com) and contributors. It is
+[simplabs GmbH](http://simplabs.com) and contributors. It is
 released under the
 [MIT License](LICENSE).
 

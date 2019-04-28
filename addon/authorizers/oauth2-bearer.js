@@ -1,8 +1,5 @@
-/* jscs:disable requireDotNotation */
-import Ember from 'ember';
+import { isEmpty } from '@ember/utils';
 import Base from './base';
-
-const { isEmpty } = Ember;
 
 /**
   Authorizer that conforms to OAuth 2

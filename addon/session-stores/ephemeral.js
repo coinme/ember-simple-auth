@@ -1,7 +1,5 @@
-import Ember from 'ember';
+import RSVP from 'rsvp';
 import BaseStore from './base';
-
-const { RSVP } = Ember;
 
 /**
   Session store that __persists data in memory and thus is not actually
@@ -21,7 +19,7 @@ export default BaseStore.extend({
   },
 
   /**
-    Persists the `data`. This replaces all currently stored data.
+    Persists `data`. This replaces all currently stored data.
 
     @method persist
     @param {Object} data The data to persist

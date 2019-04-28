@@ -10,12 +10,12 @@ module.exports = {
   ],
 
   locals: function(options) {
-    var name      = options.entity.name;
+    var name = options.entity.name;
     var baseClass = options.baseClass || 'base';
 
     if (baseClass === 'torii') {
       return {
-        imports: 'import Torii from \'ember-simple-auth/authenticators/torii\';',
+        imports: 'import Ember from \'ember\';' + EOL + 'import Torii from \'ember-simple-auth/authenticators/torii\';',
         baseClass: 'Torii',
         body: EOL + '  torii: Ember.inject.service(\'torii\')'
       };

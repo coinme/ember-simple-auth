@@ -1,59 +1,83 @@
-/* jshint expr:true */
 import { describe, afterEach, it } from 'mocha';
 import { expect } from 'chai';
 import Configuration from 'ember-simple-auth/configuration';
+import { registerDeprecationHandler } from '@ember/debug';
 
 describe('Configuration', () => {
-  afterEach(() => {
+  afterEach(function() {
     Configuration.load({});
   });
 
-  describe('baseURL', () => {
-    it('defaults to ""', () => {
+  describe('rootURL', function() {
+    it('defaults to ""', function() {
       Configuration.load({});
 
-      expect(Configuration.baseURL).to.eql('');
+      expect(Configuration.rootURL).to.eql('');
     });
   });
 
-  describe('authenticationRoute', () => {
-    it('defaults to "login"', () => {
+  describe('baseURL', function() {
+    it('is an alias to rootURL', function() {
+      Configuration.load({ rootURL: '/rootURL' });
+
+      expect(Configuration.baseURL).to.eql('/rootURL');
+    });
+
+    it('is deprecated', function() {
+      let warnings;
+      registerDeprecationHandler((message, options, next) => {
+        // in case a deprecation is issued before a test is started
+        if (!warnings) {
+          warnings = [];
+        }
+
+        warnings.push(message);
+        next(message, options);
+      });
+      Configuration.baseURL;
+
+      expect(warnings[0]).to.eq('The baseURL property should no longer be used. Instead, use rootURL.');
+    });
+  });
+
+  describe('authenticationRoute', function() {
+    it('defaults to "login"', function() {
       expect(Configuration.authenticationRoute).to.eql('login');
     });
   });
 
-  describe('routeAfterAuthentication', () => {
-    it('defaults to "index"', () => {
+  describe('routeAfterAuthentication', function() {
+    it('defaults to "index"', function() {
       expect(Configuration.routeAfterAuthentication).to.eql('index');
     });
   });
 
-  describe('routeIfAlreadyAuthenticated', () => {
-    it('defaults to "index"', () => {
+  describe('routeIfAlreadyAuthenticated', function() {
+    it('defaults to "index"', function() {
       expect(Configuration.routeIfAlreadyAuthenticated).to.eql('index');
     });
   });
 
-  describe('.load', () => {
-    it('sets baseURL correctly', () => {
-      Configuration.load({ baseURL: '/baseURL' });
+  describe('.load', function() {
+    it('sets rootURL correctly', function() {
+      Configuration.load({ rootURL: '/rootURL' });
 
-      expect(Configuration.baseURL).to.eql('/baseURL');
+      expect(Configuration.rootURL).to.eql('/rootURL');
     });
 
-    it('sets authenticationRoute correctly', () => {
+    it('sets authenticationRoute correctly', function() {
       Configuration.load({ authenticationRoute: 'authenticationRoute' });
 
       expect(Configuration.authenticationRoute).to.eql('authenticationRoute');
     });
 
-    it('sets routeAfterAuthentication correctly', () => {
+    it('sets routeAfterAuthentication correctly', function() {
       Configuration.load({ routeAfterAuthentication: 'routeAfterAuthentication' });
 
       expect(Configuration.routeAfterAuthentication).to.eql('routeAfterAuthentication');
     });
 
-    it('sets routeIfAlreadyAuthenticated correctly', () => {
+    it('sets routeIfAlreadyAuthenticated correctly', function() {
       Configuration.load({ routeIfAlreadyAuthenticated: 'routeIfAlreadyAuthenticated' });
 
       expect(Configuration.routeIfAlreadyAuthenticated).to.eql('routeIfAlreadyAuthenticated');

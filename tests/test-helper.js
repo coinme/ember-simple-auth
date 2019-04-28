@@ -1,8 +1,5 @@
-import sinonChai from 'npm:sinon-chai';
-import chai from 'chai';
-import resolver from './helpers/resolver';
-import { setResolver } from 'ember-mocha';
+import { setApplication } from '@ember/test-helpers';
+import Application from '../app';
+import config from '../config/environment';
 
-setResolver(resolver);
-
-chai.use(sinonChai);
+setApplication(Application.create(config.APP));

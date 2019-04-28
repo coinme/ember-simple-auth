@@ -1,21 +1,19 @@
-/* jscs:disable requireDotNotation */
+import RSVP from 'rsvp';
+import { isEmpty } from '@ember/utils';
+import { run } from '@ember/runloop';
+import { computed } from '@ember/object';
+import { A, makeArray } from '@ember/array';
+import { warn } from '@ember/debug';
+import {
+  keys as emberKeys,
+  merge,
+  assign as emberAssign
+} from '@ember/polyfills';
+import { deprecate } from '@ember/application/deprecations';
 import Ember from 'ember';
 import BaseAuthenticator from './base';
+import fetch from 'fetch';
 
-const {
-  RSVP,
-  isEmpty,
-  run,
-  computed,
-  makeArray,
-  assign: emberAssign,
-  merge,
-  A,
-  $: jQuery,
-  testing,
-  warn,
-  keys: emberKeys
-} = Ember;
 const assign = emberAssign || merge;
 const keys = Object.keys || emberKeys; // Ember.keys deprecated in 1.13
 
@@ -57,6 +55,17 @@ export default BaseAuthenticator.extend({
   clientId: null,
 
   /**
+   The OAuth2 standard is to send the client_id as a query parameter. This is a
+   feature flag that turns on the correct behavior for OAuth2 requests.
+
+   @property sendClientIdAsQueryParam
+   @type Boolean
+   @default false
+   @public
+  */
+  sendClientIdAsQueryParam: false,
+
+  /**
     The endpoint on the server that authentication and token refresh requests
     are sent to.
 
@@ -69,7 +78,7 @@ export default BaseAuthenticator.extend({
 
   /**
     The endpoint on the server that token revocation requests are sent to. Only
-    set this if the server actually supports token revokation. If this is
+    set this if the server actually supports token revocation. If this is
     `null`, the authenticator will not revoke tokens on session invalidation.
 
     __If token revocation is enabled but fails, session invalidation will be
@@ -104,7 +113,7 @@ export default BaseAuthenticator.extend({
     as volatile so it will actually have a different value each time it is
     accessed.__
 
-    @property refreshAccessTokens
+    @property tokenRefreshOffset
     @type Integer
     @default a random number between 5 and 10
     @public
@@ -120,16 +129,16 @@ export default BaseAuthenticator.extend({
 
   _clientIdHeader: computed('clientId', function() {
     const clientId = this.get('clientId');
-
     if (!isEmpty(clientId)) {
-      const base64ClientId = window.btoa(clientId.concat(':'));
+      const base64ClientId = window.base64.encode(clientId.concat(':'));
       return { Authorization: `Basic ${base64ClientId}` };
     }
   }),
 
   /**
     When authentication fails, the rejection callback is provided with the whole
-    XHR object instead of it's response JSON or text.
+    Fetch API [Response](https://fetch.spec.whatwg.org/#response-class) object
+    instead of its responseJSON or responseText.
 
     This is useful for cases when the backend provides additional context not
     available in the response body.
@@ -137,9 +146,28 @@ export default BaseAuthenticator.extend({
     @property rejectWithXhr
     @type Boolean
     @default false
+    @deprecated OAuth2PasswordGrantAuthenticator/rejectWithResponse:property
     @public
   */
-  rejectWithXhr: false,
+  rejectWithXhr: computed.deprecatingAlias('rejectWithResponse', {
+    id: `ember-simple-auth.authenticator.reject-with-xhr`,
+    until: '2.0.0'
+  }),
+
+  /**
+    When authentication fails, the rejection callback is provided with the whole
+    Fetch API [Response](https://fetch.spec.whatwg.org/#response-class) object
+    instead of its responseJSON or responseText.
+
+    This is useful for cases when the backend provides additional context not
+    available in the response body.
+
+    @property rejectWithResponse
+    @type Boolean
+    @default false
+    @public
+  */
+  rejectWithResponse: false,
 
   /**
     Restores the session from a session data object; __will return a resolving
@@ -161,7 +189,7 @@ export default BaseAuthenticator.extend({
   */
   restore(data) {
     return new RSVP.Promise((resolve, reject) => {
-      const now                 = (new Date()).getTime();
+      const now = (new Date()).getTime();
       const refreshAccessTokens = this.get('refreshAccessTokens');
       if (!isEmpty(data['expires_at']) && data['expires_at'] < now) {
         if (refreshAccessTokens) {
@@ -197,6 +225,36 @@ export default BaseAuthenticator.extend({
     method also schedules refresh requests for the access token before it
     expires.__
 
+    The server responses are expected to look as defined in the spec (see
+    http://tools.ietf.org/html/rfc6749#section-5). The response to a successful
+    authentication request should be:
+
+    ```json
+    HTTP/1.1 200 OK
+    Content-Type: application/json;charset=UTF-8
+
+    {
+      "access_token":"2YotnFZFEjr1zCsicMWpAA",
+      "token_type":"bearer",
+      "expires_in":3600, // optional
+      "refresh_token":"tGzv3JOkF0XG5Qx2TlKWIA" // optional
+    }
+    ```
+
+    The response for a failing authentication request should be:
+
+    ```json
+    HTTP/1.1 400 Bad Request
+    Content-Type: application/json;charset=UTF-8
+
+    {
+      "error":"invalid_grant"
+    }
+    ```
+
+    A full list of error codes can be found
+    [here](https://tools.ietf.org/html/rfc6749#section-5.2).
+
     @method authenticate
     @param {String} identification The resource owner username
     @param {String} password The resource owner password
@@ -206,10 +264,21 @@ export default BaseAuthenticator.extend({
     @public
   */
   authenticate(identification, password, scope = [], headers = {}) {
+    if (!this.get('sendClientIdAsQueryParam')) {
+      deprecate(`Ember Simple Auth: Client ID as Authorization Header is deprecated in favour of Client ID as Query String Parameter.`,
+        false,
+        {
+          id: 'ember-simple-auth.oauth2-password-grant-authenticator.client-id-as-authorization',
+          until: '2.0.0',
+          url: 'https://github.com/simplabs/ember-simple-auth#deprecation-of-client-id-header',
+        }
+      );
+    }
+
     return new RSVP.Promise((resolve, reject) => {
-      const data                = { 'grant_type': 'password', username: identification, password };
+      const data = { 'grant_type': 'password', username: identification, password };
       const serverTokenEndpoint = this.get('serverTokenEndpoint');
-      const useXhr = this.get('rejectWithXhr');
+      const useResponse = this.get('rejectWithResponse');
       const scopesString = makeArray(scope).join(' ');
       if (!isEmpty(scopesString)) {
         data.scope = scopesString;
@@ -228,8 +297,8 @@ export default BaseAuthenticator.extend({
 
           resolve(response);
         });
-      }, (xhr) => {
-        run(null, reject, useXhr ? xhr : (xhr.responseJSON || xhr.responseText));
+      }, (response) => {
+        run(null, reject, useResponse ? response : (response.responseJSON || response.responseText));
       });
     });
   },
@@ -283,29 +352,54 @@ export default BaseAuthenticator.extend({
     @param {String} url The request URL
     @param {Object} data The request data
     @param {Object} headers Additional headers to send in request
-    @return {jQuery.Deferred} A promise like jQuery.Deferred as returned by `$.ajax`
+    @return {Promise} A promise that resolves with the response object
     @protected
   */
   makeRequest(url, data, headers = {}) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+
+    if (this.get('sendClientIdAsQueryParam')) {
+      const clientId = this.get('clientId');
+      if (!isEmpty(clientId)) {
+        data['client_id'] = this.get('clientId');
+      }
+    }
+
+    const body = keys(data).map((key) => {
+      return `${encodeURIComponent(key)}=${encodeURIComponent(data[key])}`;
+    }).join('&');
+
     const options = {
-      url,
-      data,
-      type:        'POST',
-      dataType:    'json',
-      contentType: 'application/x-www-form-urlencoded',
-      headers
+      body,
+      headers,
+      method: 'POST'
     };
 
-    const clientIdHeader = this.get('_clientIdHeader');
-    if (!isEmpty(clientIdHeader)) {
-      merge(options.headers, clientIdHeader);
+    if (!this.get('sendClientIdAsQueryParam')) {
+      const clientIdHeader = this.get('_clientIdHeader');
+      if (!isEmpty(clientIdHeader)) {
+        assign(options.headers, clientIdHeader);
+      }
     }
 
-    if (isEmpty(keys(options.headers))) {
-      delete options.headers;
-    }
-
-    return jQuery.ajax(options);
+    return new RSVP.Promise((resolve, reject) => {
+      fetch(url, options).then((response) => {
+        response.text().then((text) => {
+          try {
+            let json = JSON.parse(text);
+            if (!response.ok) {
+              response.responseJSON = json;
+              reject(response);
+            } else {
+              resolve(json);
+            }
+          } catch (SyntaxError) {
+            response.responseText = text;
+            reject(response);
+          }
+        });
+      }).catch(reject);
+    });
   },
 
   _scheduleAccessTokenRefresh(expiresIn, expiresAt, refreshToken) {
@@ -319,7 +413,7 @@ export default BaseAuthenticator.extend({
       if (!isEmpty(refreshToken) && !isEmpty(expiresAt) && expiresAt > now - offset) {
         run.cancel(this._refreshTokenTimeout);
         delete this._refreshTokenTimeout;
-        if (!testing) {
+        if (!Ember.testing) {
           this._refreshTokenTimeout = run.later(this, this._refreshAccessToken, expiresIn, refreshToken, expiresAt - now - offset);
         }
       }
@@ -327,21 +421,21 @@ export default BaseAuthenticator.extend({
   },
 
   _refreshAccessToken(expiresIn, refreshToken) {
-    const data                = { 'grant_type': 'refresh_token', 'refresh_token': refreshToken };
+    const data = { 'grant_type': 'refresh_token', 'refresh_token': refreshToken };
     const serverTokenEndpoint = this.get('serverTokenEndpoint');
     return new RSVP.Promise((resolve, reject) => {
       this.makeRequest(serverTokenEndpoint, data).then((response) => {
         run(() => {
-          expiresIn       = response['expires_in'] || expiresIn;
-          refreshToken    = response['refresh_token'] || refreshToken;
+          expiresIn = response['expires_in'] || expiresIn;
+          refreshToken = response['refresh_token'] || refreshToken;
           const expiresAt = this._absolutizeExpirationTime(expiresIn);
-          const data      = assign(response, { 'expires_in': expiresIn, 'expires_at': expiresAt, 'refresh_token': refreshToken });
+          const data = assign(response, { 'expires_in': expiresIn, 'expires_at': expiresAt, 'refresh_token': refreshToken });
           this._scheduleAccessTokenRefresh(expiresIn, null, refreshToken);
           this.trigger('sessionDataUpdated', data);
           resolve(data);
         });
-      }, (xhr, status, error) => {
-        warn(`Access token could not be refreshed - server responded with ${error}.`);
+      }, (response) => {
+        warn(`Access token could not be refreshed - server responded with ${response.responseJSON}.`, false, { id: 'ember-simple-auth.failedOAuth2TokenRefresh' });
         reject();
       });
     });

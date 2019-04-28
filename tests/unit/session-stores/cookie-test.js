@@ -1,19 +1,21 @@
-/* jshint expr:true */
-import { describe, beforeEach, afterEach } from 'mocha';
-import sinon from 'sinon';
-import Cookie from 'ember-simple-auth/session-stores/cookie';
+import { describe, beforeEach } from 'mocha';
+import sinonjs from 'sinon';
 import itBehavesLikeAStore from './shared/store-behavior';
 import itBehavesLikeACookieStore from './shared/cookie-store-behavior';
+import FakeCookieService from '../../helpers/fake-cookie-service';
+import createCookieStore from '../../helpers/create-cookie-store';
 
 describe('CookieStore', () => {
+  let sinon;
   let store;
 
-  beforeEach(() => {
-    store = Cookie.create();
+  beforeEach(function() {
+    sinon = sinonjs.sandbox.create();
+    store = createCookieStore(FakeCookieService.create());
   });
 
-  afterEach(() => {
-    store.clear();
+  afterEach(function() {
+    sinon.restore();
   });
 
   itBehavesLikeAStore({
@@ -26,11 +28,11 @@ describe('CookieStore', () => {
   });
 
   itBehavesLikeACookieStore({
-    createStore(options) {
-      return Cookie.create(options);
+    createStore(cookiesService, options = {}) {
+      return createCookieStore(cookiesService, options);
     },
     renew(store, data) {
-      store._renew(data);
+      return store._renew(data);
     },
     sync(store) {
       store._syncData();
